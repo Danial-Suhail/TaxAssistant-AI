@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowUpIcon, BarChart3Icon, FileTextIcon, LineChartIcon, CalculatorIcon } from "lucide-react";
+import { ArrowUpIcon, BarChart3Icon, FileTextIcon, LineChartIcon, CalculatorIcon, Send, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 import { chat } from "@/actions/chat";
 import { readStreamableValue } from "ai/rsc";
 import { cn } from "@/lib/utils";
 import MarkdownRenderer from "./markdown-renderer";
+import FileUpload from './chat/file-upload';
 
 const prompts = [
     {
@@ -110,18 +111,44 @@ const Chatbot = () => {
     };
 
     return (
-        <div className="relative h-full flex flex-col items-center">
+        <div className="relative h-full flex flex-col items-center mb-5">
             {/* Message Container */}
             <div className="flex-1 w-full max-w-3xl px-4">
                 {!hasStartedChat ? (
-                    <div className="flex flex-col justify-end h-full space-y-8">
+                    <div className="flex flex-col justify-end h-full">
                         <div className="text-center space-y-4">
-                            <h1 className="text-4xl font-semibold">
-                                Hi there 👋
-                            </h1>
-                            <h2 className="text-xl text-muted-foreground">
-                                What can I help you with?
-                            </h2>
+                        <div className="flex flex-col items-center justify-center h-full text-center">
+                <div className="bg-teal-100 p-6 rounded-full mb-4">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="48"
+                    height="48"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-teal-600"
+                  >
+                    <path d="M21 12c0 1.2-.504 2.1-1.5 2.7s-1.5 1.2-1.5 2.3c0 .6-.4 1-1 1h-10c-.6 0-1-.4-1-1 0-1.1-.5-1.7-1.5-2.3S3 13.2 3 12s.504-2.1 1.5-2.7S6 8.1 6 7c0-.6.4-1 1-1h10c.6 0 1 .4 1 1 0 1.1.5 1.7 1.5 2.3S21 10.8 21 12z"></path>
+                    <path d="M12 2v2"></path>
+                    <path d="M12 20v2"></path>
+                    <path d="m4.93 4.93 1.41 1.41"></path>
+                    <path d="m17.66 17.66 1.41 1.41"></path>
+                    <path d="M2 12h2"></path>
+                    <path d="M20 12h2"></path>
+                    <path d="m6.34 17.66-1.41 1.41"></path>
+                    <path d="m19.07 4.93-1.41 1.41"></path>
+                  </svg>
+                </div>
+                <h3 className="text-xl font-semibold text-teal-700 mb-2">👋 How can I help with your taxes today?</h3>
+                <p className="text-gray-500 max-w-sm mb-12">
+                  Ask me about tax deductions, filing status, or upload your tax documents for analysis.
+                </p>
+              </div>
+
+
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-4">
@@ -191,7 +218,7 @@ const Chatbot = () => {
             <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0, position: hasStartedChat ? "fixed" : "relative" }}
-                className="w-full bg-gradient-to-t from-white via-white to-transparent pb-4 pt-6 bottom-0 mt-auto"
+                className="w-full bg-gradient-to-t from-white via-white to-transparent pb-4 pt-6 bottom-0 mt-auto "
             >
                 <div className="max-w-3xl mx-auto px-4">
                     <motion.div
@@ -200,6 +227,7 @@ const Chatbot = () => {
                         transition={{ duration: 0.2 }}
                         className="relative border rounded-2xl lg:rounded-e-3xl p-2.5 flex items-end gap-2 bg-background"
                     >
+                        <FileUpload /> {/* Moved to the start */}
                         <div
                             contentEditable
                             role="textbox"
@@ -212,8 +240,8 @@ const Chatbot = () => {
                                     handleSend();
                                 }
                             }}
-                            data-placeholder="Message..."
-                            className="flex-1 min-h-[36px] overflow-y-auto px-3 py-2 focus:outline-none text-sm bg-background rounded-md empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)] whitespace-pre-wrap break-words"
+                            data-placeholder="Ask about your taxes..."
+                            className="flex-1 min-h-[36px] overflow-y-auto px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm bg-background rounded-md empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)] whitespace-pre-wrap break-words"
                             ref={(element) => {
                                 inputRef.current = element;
                                 if (element && !input) {
@@ -221,12 +249,16 @@ const Chatbot = () => {
                                 }
                             }}
                         />
-
-                        <Button
-                            size="icon"
-                            className="rounded-full shrink-0 mb-0.5"
+                        <Button 
+                            type="submit" 
+                            disabled={isLoading || !input.trim()} 
+                            className="bg-teal-600 hover:bg-teal-700"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                handleSend();
+                            }}
                         >
-                            <ArrowUpIcon strokeWidth={2.5} className="size-5" />
+                            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                         </Button>
                     </motion.div>
                 </div>
