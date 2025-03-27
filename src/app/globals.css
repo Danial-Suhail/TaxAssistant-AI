@@ -74,3 +74,66 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Add after your existing styles */
+.mesh-gradient {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  z-index: -1;
+  background: linear-gradient(45deg, 
+    rgba(20, 184, 166, 0.1) 0%,
+    rgba(20, 184, 166, 0.05) 25%,
+    rgba(45, 212, 191, 0.1) 50%,
+    rgba(94, 234, 212, 0.05) 75%,
+    rgba(153, 246, 228, 0.1) 100%
+  );
+  animation: meshGradient 15s ease infinite;
+  background-size: 400% 400%;
+}
+
+.mesh-gradient::before,
+.mesh-gradient::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+.mesh-gradient::before {
+  background: radial-gradient(circle at 50% 50%, 
+    rgba(20, 184, 166, 0.1),
+    transparent 40%);
+  animation: pulse 8s ease infinite;
+}
+
+.mesh-gradient::after {
+  background: radial-gradient(circle at 50% 50%, 
+    rgba(45, 212, 191, 0.1),
+    transparent 35%);
+  animation: pulse 8s ease infinite reverse;
+}
+
+@keyframes meshGradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.glass-effect {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}

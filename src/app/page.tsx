@@ -1,48 +1,84 @@
-
 "use client"
 
 import React from 'react'
 import { Card } from "@/components/ui/card"
 import { Send, Loader2, Calculator, LineChart, FileText, BarChart } from "lucide-react"
 import Chatbot from "@/components/chat-box"
+import { motion } from "framer-motion"
 
-const SuggestedPrompts = [
-  {
-    icon: <Calculator className="h-5 w-5" />,
-    text: "Generate the monthly income statement"
-  },
-  {
-    icon: <LineChart className="h-5 w-5" />,
-    text: "Provide a 12-month cash flow forecast"
-  },
-  {
-    icon: <FileText className="h-5 w-5" />,
-    text: "Book a journal entry"
-  },
-  {
-    icon: <BarChart className="h-5 w-5" />,
-    text: "Create a real-time financial dashboard"
+const fadeInUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.5 }
+};
+
+const stagger = {
+  animate: {
+    transition: {
+      staggerChildren: 0.1
+    }
   }
-]
+};
 
 export default function HomePage() {
   return (
-    <main className="flex min-h-screen flex-col items-center bg-gradient-to-b from-teal-50 to-white">
-      <div className="w-full max-w-4xl px-4 py-8">
-        <div className="flex flex-col items-center mb-8">
-          <h1 className="text-3xl font-bold text-teal-700 mb-2">TaxAssist AI</h1>
-          <p className="text-gray-600 text-center max-w-md">
-            Your AI tax assistant. Ask questions about Form 1040, deductions, and more.
-          </p>
-        </div>
+    <>
+      <div className="mesh-gradient" />
+      <motion.main
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5 }}
+        className="flex min-h-screen flex-col items-center relative"
+      >
+        <motion.div 
+          variants={stagger}
+          initial="initial"
+          animate="animate"
+          className="w-full max-w-4xl px-4 py-8"
+        >
+          <motion.div 
+            variants={fadeInUp}
+            className="flex flex-col items-center mb-8"
+          >
+            <motion.h1 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+              className="text-3xl font-bold text-teal-700 mb-2"
+            >
+              TaxAssist AI
+            </motion.h1>
+            <motion.p
+              variants={fadeInUp}
+              className="text-gray-600 text-center max-w-md"
+            >
+              Your AI tax assistant. Ask questions about Form 1040, deductions, and more.
+            </motion.p>
+          </motion.div>
 
-        <Card className="w-full px-3 pb-3 shadow-lg mb-10 bg-white">
-          <div className="h-[70vh] overflow-y-auto ">
-            <Chatbot />
-          </div>
-        </Card>
-      </div>
-    </main>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ 
+              duration: 0.7,
+              delay: 0.3,
+              ease: [0.23, 1, 0.32, 1]
+            }}
+          >
+            <Card className="w-full px-3 pb-3 shadow-lg mb-10 glass-effect">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5, delay: 0.5 }}
+                className="h-[70vh] overflow-y-auto"
+              >
+                <Chatbot />
+              </motion.div>
+            </Card>
+          </motion.div>
+        </motion.div>
+      </motion.main>
+    </>
   )
 }
 
