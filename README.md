@@ -2,8 +2,6 @@
 
 A modern AI chatbot built with Next.js and Vercel AI SDK.
 
-<img src="https://github.com/user-attachments/assets/8fe9dd7a-93a4-474c-9212-6fc896c2c9f0" alt="Video Thumbnail">
-
 ## 🎥 View
 
 ## ✨ Features
