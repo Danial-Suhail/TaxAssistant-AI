@@ -1,19 +1,12 @@
-# NextJS Vercel AI Chatbot
+# AI Chatbot
 
-A modern AI chatbot built with Next.js and Vercel AI SDK, featuring multiple AI model support and real-time streaming responses.
+A modern AI chatbot built with Next.js and Vercel AI SDK.
 
 <img src="https://github.com/user-attachments/assets/8fe9dd7a-93a4-474c-9212-6fc896c2c9f0" alt="Video Thumbnail">
 
 ## 🎥 View
 
-Watch the video: [YouTube](https://youtu.be/IWiGE2bBl2I)
-
 ## ✨ Features
-
-- 🤖 Multiple AI model support (OpenAI, Gemini)
-- ⚡ Real-time streaming responses
-- 📱 Responsive design
-- 🎨 Modern UI with Tailwind CSS
 
 ## 💻 Tech Stack
 
