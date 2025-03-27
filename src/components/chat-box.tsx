@@ -11,9 +11,6 @@ import { useChat } from 'ai/react';
 import { toast } from 'sonner'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-import { ChangeEvent } from 'react';
-type InputChangeEvent = ChangeEvent<HTMLInputElement | HTMLTextAreaElement>;
-
 type HandleSubmitOptions = {
   data?: string;
   experimental_attachments?: FileList;
@@ -240,9 +237,6 @@ const Chatbot = () => {
     };
     
 
-    const handleUploadClick = () => {
-        fileInputRef.current?.click();
-    };
 
     const scrollToBottom = () => {
         messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
