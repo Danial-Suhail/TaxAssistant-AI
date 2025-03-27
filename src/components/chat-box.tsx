@@ -1,48 +1,269 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from 'react';
-import { ArrowUpIcon, BarChart3Icon, FileTextIcon, LineChartIcon, CalculatorIcon, Send, Loader2 } from "lucide-react";
+import React, { useEffect, useRef, useState, DragEvent } from 'react';
+import { ArrowUpIcon, BarChart3Icon, FileTextIcon, LineChartIcon, CalculatorIcon, Send, Loader2, Plus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
-import { chat } from "@/actions/chat";
-import { readStreamableValue } from "ai/rsc";
 import { cn } from "@/lib/utils";
 import MarkdownRenderer from "./markdown-renderer";
 import FileUpload from './chat/file-upload';
+import { useChat } from 'ai/react';
+import { toast } from 'sonner'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-const prompts = [
-    {
-        icon: <CalculatorIcon strokeWidth={1.8} className="size-5" />,
-        text: "Generate the monthly income statement",
-    },
-    {
-        icon: <LineChartIcon strokeWidth={1.8} className="size-5" />,
-        text: "Provide a 12-month cash flow forecast",
-    },
-    {
-        icon: <FileTextIcon strokeWidth={1.8} className="size-5" />,
-        text: "Book a journal entry",
-    },
-    {
-        icon: <BarChart3Icon strokeWidth={1.8} className="size-5" />,
-        text: "Create a real-time financial dashboard",
-    },
+const getTextFromDataUrl = (dataUrl: string) => {
+  const base64 = dataUrl.split(",")[1];
+  return window.atob(base64);
+};
+
+function TextFilePreview({ file }: { file: File }) {
+  const [content, setContent] = useState<string>("");
+
+  useEffect(() => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result;
+      setContent(typeof text === "string" ? text.slice(0, 100) : "");
+    };
+    reader.readAsText(file);
+  }, [file]);
+
+  return (
+    <div>
+      {content}
+      {content.length >= 100 && "..."}
+    </div>
+  );
+}
+
+// First, create an array of prompt sets
+const promptSets = [
+    [
+        {
+            icon: <CalculatorIcon strokeWidth={1.8} className="size-5" />,
+            text: "How do tax brackets work for 2024?",
+        },
+        {
+            icon: <LineChartIcon strokeWidth={1.8} className="size-5" />,
+            text: "What tax deductions am I eligible for?",
+        },
+        {
+            icon: <FileTextIcon strokeWidth={1.8} className="size-5" />,
+            text: "Explain the difference between W-2 and 1099",
+        },
+        {
+            icon: <BarChart3Icon strokeWidth={1.8} className="size-5" />,
+            text: "What's the standard deduction for 2024?",
+        },
+    ],
+    [
+        {
+            icon: <CalculatorIcon strokeWidth={1.8} className="size-5" />,
+            text: "How does the Child Tax Credit work?",
+        },
+        {
+            icon: <LineChartIcon strokeWidth={1.8} className="size-5" />,
+            text: "What are the capital gains tax rates?",
+        },
+        {
+            icon: <FileTextIcon strokeWidth={1.8} className="size-5" />,
+            text: "How do I claim home office deductions?",
+        },
+        {
+            icon: <BarChart3Icon strokeWidth={1.8} className="size-5" />,
+            text: "Explain tax-advantaged retirement accounts",
+        },
+    ],
+    [
+        {
+            icon: <CalculatorIcon strokeWidth={1.8} className="size-5" />,
+            text: "What are estimated tax payments?",
+        },
+        {
+            icon: <LineChartIcon strokeWidth={1.8} className="size-5" />,
+            text: "How to reduce my taxable income?",
+        },
+        {
+            icon: <FileTextIcon strokeWidth={1.8} className="size-5" />,
+            text: "Explain itemized deductions",
+        },
+        {
+            icon: <BarChart3Icon strokeWidth={1.8} className="size-5" />,
+            text: "What tax credits are available?",
+        },
+    ],
 ];
 
 export type Message = {
     role: "user" | "assistant";
     content: string;
+    experimental_attachments?: { name: string; url: string; contentType: string }[];
 }
 
+// Add after your existing type definitions
+type ChatHistory = {
+  id: string;
+  title: string;
+  messages: Message[];
+  timestamp: string;
+};
+
+const TaxTable = ({ data }: { data: { label: string; amount: number }[] }) => (
+  <div className="overflow-x-auto my-4">
+    <table className="min-w-full bg-white border border-gray-200 rounded-lg">
+      <thead className="bg-gray-50">
+        <tr>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-gray-200">
+        {data.map((item, index) => (
+          <tr key={index}>
+            <td className="px-6 py-4 text-sm text-gray-900">{item.label}</td>
+            <td className="px-6 py-4 text-sm text-gray-900 text-right">
+              ${item.amount.toLocaleString()}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
+
+const TaxBarChart = ({ data }: { data: { name: string; value: number }[] }) => (
+  <div className="h-64 w-full my-4">
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis dataKey="name" />
+        <YAxis />
+        <Tooltip />
+        <Bar dataKey="value" fill="#14b8a6" />
+      </BarChart>
+    </ResponsiveContainer>
+  </div>
+);
+
+const extractJSON = (content: string, startMarker: string, endMarker: string) => {
+  try {
+    const start = content.indexOf(startMarker);
+    if (start === -1) return null;
+    
+    const end = content.indexOf(endMarker, start);
+    if (end === -1) return null;
+    
+    const jsonString = content.substring(start + startMarker.length, end).trim();
+    return JSON.parse(jsonString);
+  } catch (error) {
+    console.error('Error parsing JSON:', error);
+    return null;
+  }
+};
+
 const Chatbot = () => {
+    const { messages, input, handleInputChange, handleSubmit: handleMessageSubmit, isLoading } = useChat({
+        api: '/api/chat',
+        onError: () => {
+            toast.error("Failed to send message");
+        }
+    });
 
     const messageEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLDivElement>(null);
-
-    const [input, setInput] = useState<string>("");
-    const [conversation, setConversation] = useState<Message[]>([]);
-    const [isLoading, setIsLoading] = useState<boolean>(false);
     const [hasStartedChat, setHasStartedChat] = useState<boolean>(false);
+    const [files, setFiles] = useState<FileList | null>(null);
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const [clearPreview, setClearPreview] = useState(false);
+
+    const [currentPromptSetIndex, setCurrentPromptSetIndex] = useState(0);
+    const currentPrompts = promptSets[currentPromptSetIndex % promptSets.length];
+
+    // Add these new states after your existing ones
+    const [chatHistory, setChatHistory] = useState<ChatHistory[]>([]);
+    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+    // Add this to your existing state declarations in the Chatbot component
+    const [chatKey, setChatKey] = useState(0);
+
+    // Add this function to handle saving chats
+    const saveCurrentChat = () => {
+        if (messages.length > 0) {
+            const newChat: ChatHistory = {
+                id: Date.now().toString(),
+                title: messages[0].content.slice(0, 30) + "...",
+                messages: messages.filter(m => m.role === "user" || m.role === "assistant") as Message[],
+                timestamp: new Date().toLocaleString()
+            };
+
+            setChatHistory(prev => {
+                const newHistory = [newChat, ...prev].slice(0, 5);
+                localStorage.setItem('chatHistory', JSON.stringify(newHistory));
+                return newHistory;
+            });
+        }
+    };
+
+    // Add this useEffect to load chat history on mount
+    useEffect(() => {
+        const savedHistory = localStorage.getItem('chatHistory');
+        if (savedHistory) {
+            setChatHistory(JSON.parse(savedHistory));
+        }
+    }, []);
+
+    const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      setIsDragging(true);
+    };
+    
+    const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      setIsDragging(false);
+    };
+    
+    const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const droppedFiles = event.dataTransfer.files;
+      const droppedFilesArray = Array.from(droppedFiles);
+      if (droppedFilesArray.length > 0) {
+        const validFiles = droppedFilesArray.filter(
+          (file) => file.type.startsWith("image/") || file.type.startsWith("text/")
+        );
+    
+        if (validFiles.length === droppedFilesArray.length) {
+          const dataTransfer = new DataTransfer();
+          validFiles.forEach((file) => dataTransfer.items.add(file));
+          setFiles(dataTransfer.files);
+        } else {
+          toast.error("Only image and text files are allowed!");
+        }
+      }
+      setIsDragging(false);
+    };
+    
+    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+      const selectedFiles = event.target.files;
+      if (selectedFiles) {
+        const validFiles = Array.from(selectedFiles).filter(
+          (file) => file.type.startsWith("image/") || file.type.startsWith("text/")
+        );
+    
+        if (validFiles.length === selectedFiles.length) {
+          const dataTransfer = new DataTransfer();
+          validFiles.forEach((file) => dataTransfer.items.add(file));
+          setFiles(dataTransfer.files);
+        } else {
+          toast.error("Only image and text files are allowed");
+        }
+      }
+    };
+
+    const handleUploadClick = () => {
+        fileInputRef.current?.click();
+    };
 
     const scrollToBottom = () => {
         messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -53,65 +274,107 @@ const Chatbot = () => {
     }, [input]);
 
     const handlePromptClick = (text: string) => {
-        setInput(text);
         if (inputRef.current) {
             inputRef.current.textContent = text;
         }
+        handleInputChange({ target: { value: text } } as any);
     };
 
-    const handleSend = async () => {
-        if (!input.trim() || isLoading) return;
+    const handleFileSelect = (file: File) => {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      setFiles(dataTransfer.files);
+    };
 
-        const userMesage: Message = {
-            role: "user",
-            content: input.trim(),
-        };
+    const handleSubmit = async (e: React.FormEvent, options?: any) => {
+      e.preventDefault();
+      const fileOptions = options || (files ? { experimental_attachments: files } : {});
+      await handleMessageSubmit(e, fileOptions);
+      saveCurrentChat();
+      setFiles(null);
+      setClearPreview(true); // Set to true after submission
+      // Reset after a short delay
+      setTimeout(() => setClearPreview(false), 100);
+      // Add this line to rotate prompts
+      setCurrentPromptSetIndex((prev) => (prev + 1) % promptSets.length);
+    };
 
-        setInput("");
-        setIsLoading(true);
-        setConversation(prev => [...prev, userMesage]);
-        setHasStartedChat(true);
-
-        try {
-            const { newMessage } = await chat([
-                ...conversation,
-                userMesage,
-            ]);
-
-            let textContent = "";
-
-            const assistantMessage: Message = {
-                role: "assistant",
-                content: "",
-            };
-
-            setConversation(prev => [...prev, assistantMessage]);
-
-            for await (const delta of readStreamableValue(newMessage)) {
-                textContent += delta;
-                setConversation(prev => {
-                    const newConv = [...prev];
-                    newConv[newConv.length - 1] = {
-                        role: "assistant",
-                        content: textContent,
-                    };
-                    return newConv;
-                });
-            }
-
-        } catch (error) {
-            console.error("Error: ", error);
-            setConversation(prev => [...prev, {
-                role: "assistant",
-                content: "Sorry, there was an error. Please try again",
-            }]);
-        } finally {
-            setIsLoading(false);
-        }
+    // Add this function after your other handler functions
+    const handleNewChat = () => {
+      setChatKey(prev => prev + 1);
+      setHasStartedChat(false);
+      setFiles(null);
+      setClearPreview(true);
+      setTimeout(() => setClearPreview(false), 100);
     };
 
     return (
         <div className="relative h-full flex flex-col items-center mb-5">
+            {/* New Chat Button */}
+            <div className="absolute top-4 left-4 z-10">
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleNewChat}
+                    className="flex items-center gap-2 text-teal-600 hover:text-teal-700"
+                >
+                    <Plus className="h-4 w-4" />
+                    <span className="hidden sm:inline">New Chat</span>
+                </Button>
+            </div>
+
+            {/* Add this new dropdown */}
+            <div className="absolute top-4 right-4 z-10">
+                <div className="relative">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+                        className="flex items-center gap-2"
+                    >
+                        History
+                        <svg
+                            className={`w-4 h-4 transition-transform ${isHistoryOpen ? 'rotate-180' : ''}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </Button>
+
+                    {isHistoryOpen && (
+                        <div className="absolute right-0 mt-2 w-72 bg-white rounded-md shadow-lg border">
+                            {chatHistory.length > 0 ? (
+                                <div className="py-1">
+                                    {chatHistory.map((chat) => (
+                                        <button
+                                            key={chat.id}
+                                            onClick={() => {
+                                                // Simulate sending each message from history
+                                                chat.messages.forEach((msg) => {
+                                                    if (msg.role === "user") {
+                                                        handleMessageSubmit({ preventDefault: () => {} } as any, { data: msg.content });
+                                                    }
+                                                });
+                                                setIsHistoryOpen(false);
+                                                setHasStartedChat(true);
+                                            }}
+                                            className="w-full px-4 py-2 text-left hover:bg-gray-100 flex flex-col"
+                                        >
+                                            <span className="text-sm font-medium truncate">{chat.title}</span>
+                                            <span className="text-xs text-gray-500">{chat.timestamp}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="px-4 py-2 text-sm text-gray-500">No chat history</div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+
             {/* Message Container */}
             <div className="flex-1 w-full max-w-3xl px-4">
                 {!hasStartedChat ? (
@@ -153,7 +416,7 @@ const Chatbot = () => {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-4">
                             <AnimatePresence>
-                                {prompts.map((prompt, index) => (
+                                {currentPrompts.map((prompt, index) => (
                                     <motion.button
                                         key={index}
                                         initial={{ opacity: 0, y: 20 }}
@@ -180,7 +443,7 @@ const Chatbot = () => {
                         transition={{ duration: 0.2 }}
                         className="pt-8 space-y-4"
                     >
-                        {conversation.map((message, index) => (
+                        {messages.map((message, index) => (
                             <motion.div
                                 key={index}
                                 initial={{ opacity: 0, y: 20 }}
@@ -200,11 +463,43 @@ const Chatbot = () => {
                                     }
                                 )}>
                                     {message.role === "assistant" ? (
-                                        <MarkdownRenderer content={message.content} />
+                                        <div>
+                                            <MarkdownRenderer content={message.content} />
+                                            {/* Table rendering */}
+                                            {message.content.includes('|||TABLE_DATA|||') && (
+                                              <TaxTable
+                                                data={extractJSON(
+                                                  message.content,
+                                                  '|||TABLE_DATA|||',
+                                                  '|||END_TABLE|||'
+                                                )?.tableData || []}
+                                              />
+                                            )}
+                                            {/* Chart rendering */}
+                                            {message.content.includes('|||CHART_DATA|||') && (
+                                              <TaxBarChart
+                                                data={extractJSON(
+                                                  message.content,
+                                                  '|||CHART_DATA|||',
+                                                  '|||END_CHART|||'
+                                                )?.chartData || []}
+                                              />
+                                            )}
+                                        </div>
                                     ) : (
-                                        <p className="whitespace-pre-wrap">
-                                            {message.content}
-                                        </p>
+                                        <div>
+                                            <p className="whitespace-pre-wrap">{message.content}</p>
+                                            {message.experimental_attachments?.map((attachment) =>
+                                                attachment.contentType?.startsWith("image") ? (
+                                                    <img
+                                                        key={attachment.name}
+                                                        src={attachment.url}
+                                                        alt={attachment.name}
+                                                        className="mt-2 rounded-md max-w-[200px]"
+                                                    />
+                                                ) : null
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                             </motion.div>
@@ -221,23 +516,117 @@ const Chatbot = () => {
                 className="w-full bg-gradient-to-t from-white via-white to-transparent pb-4 pt-6 bottom-0 mt-auto "
             >
                 <div className="max-w-3xl mx-auto px-4">
+                    {/* Add the prompts here, above the input */}
+                    {hasStartedChat && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-4 mb-4">
+                            <AnimatePresence mode="wait">
+                                {currentPrompts.map((prompt, index) => (
+                                    <motion.button
+                                        key={`${currentPromptSetIndex}-${index}`}
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -10 }}
+                                        whileTap={{ scale: 0.95 }}
+                                        transition={{ duration: 0.2, delay: index * 0.05 }}
+                                        onClick={() => handlePromptClick(prompt.text)}
+                                        className="flex items-center gap-3 p-3 text-left border rounded-xl hover:bg-muted transition-all text-sm"
+                                    >
+                                        {prompt.icon}
+                                        <span>{prompt.text}</span>
+                                    </motion.button>
+                                ))}
+                            </AnimatePresence>
+                        </div>
+                    )}
+
+                    {/* Your existing input div */}
                     <motion.div
                         animate={{ height: "auto" }}
                         whileFocus={{ scale: 1.01 }}
                         transition={{ duration: 0.2 }}
                         className="relative border rounded-2xl lg:rounded-e-3xl p-2.5 flex items-end gap-2 bg-background"
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
                     >
-                        <FileUpload /> {/* Moved to the start */}
+                        <AnimatePresence>
+                            {files && files.length > 0 && (
+                                <div className="flex flex-row gap-2 absolute -top-16 left-0 px-4 w-full">
+                                    {Array.from(files).map((file) =>
+                                        file.type.startsWith("image") ? (
+                                            <div key={file.name}>
+                                                <motion.img
+                                                    src={URL.createObjectURL(file)}
+                                                    alt={file.name}
+                                                    className="rounded-md w-16 h-16 object-cover"
+                                                    initial={{ scale: 0.8, opacity: 0 }}
+                                                    animate={{ scale: 1, opacity: 1 }}
+                                                    exit={{
+                                                        y: -10,
+                                                        scale: 1.1,
+                                                        opacity: 0,
+                                                        transition: { duration: 0.2 },
+                                                    }}
+                                                />
+                                            </div>
+                                        ) : null
+                                    )}
+                                </div>
+                            )}
+                        </AnimatePresence>
+                        <FileUpload onFileSelect={handleFileSelect} clearPreview={clearPreview} /> {/* Moved to the start */}
+                        <AnimatePresence>
+                            {files && files.length > 0 && (
+                                <div className="flex flex-row gap-2 absolute bottom-12 px-4 w-full md:w-[500px] md:px-0">
+                                    {Array.from(files).map((file) =>
+                                        file.type.startsWith("image") ? (
+                                            <div key={file.name}>
+                                                <motion.img
+                                                    src={URL.createObjectURL(file)}
+                                                    alt={file.name}
+                                                    className="rounded-md w-16"
+                                                    initial={{ scale: 0.8, opacity: 0 }}
+                                                    animate={{ scale: 1, opacity: 1 }}
+                                                    exit={{
+                                                        y: -10,
+                                                        scale: 1.1,
+                                                        opacity: 0,
+                                                        transition: { duration: 0.2 },
+                                                    }}
+                                                />
+                                            </div>
+                                        ) : file.type.startsWith("text") ? (
+                                            <motion.div
+                                                key={file.name}
+                                                className="text-[8px] leading-1 w-28 h-16 overflow-hidden text-zinc-500 border p-2 rounded-lg bg-white dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400"
+                                                initial={{ scale: 0.8, opacity: 0 }}
+                                                animate={{ scale: 1, opacity: 1 }}
+                                                exit={{
+                                                    y: -10,
+                                                    scale: 1.1,
+                                                    opacity: 0,
+                                                    transition: { duration: 0.2 },
+                                                }}
+                                            >
+                                                <TextFilePreview file={file} />
+                                            </motion.div>
+                                        ) : null
+                                    )}
+                                </div>
+                            )}
+                        </AnimatePresence>
                         <div
                             contentEditable
                             role="textbox"
                             onInput={(e) => {
-                                setInput(e.currentTarget.textContent || "");
+                                const value = (e.target as HTMLDivElement).textContent || '';
+                                handleInputChange({ target: { value } } as any);
                             }}
                             onKeyDown={(e) => {
                                 if (e.key === "Enter" && !e.shiftKey) {
                                     e.preventDefault();
-                                    handleSend();
+                                    handleSubmit(e);
+                                    setHasStartedChat(true);
                                 }
                             }}
                             data-placeholder="Ask about your taxes..."
@@ -255,7 +644,10 @@ const Chatbot = () => {
                             className="bg-teal-600 hover:bg-teal-700"
                             onClick={(e) => {
                                 e.preventDefault();
-                                handleSend();
+                                const options = files ? { experimental_attachments: files } : {};
+                                handleSubmit(e, options);
+                                setFiles(null); // Clear files after submission
+                                setHasStartedChat(true);
                             }}
                         >
                             {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
