@@ -173,7 +173,6 @@ const Chatbot = () => {
     const inputRef = useRef<HTMLDivElement>(null);
     const [hasStartedChat, setHasStartedChat] = useState<boolean>(false);
     const [files, setFiles] = useState<FileList | null>(null);
-    const fileInputRef = useRef<HTMLInputElement>(null);
     const [clearPreview, setClearPreview] = useState(false);
     const [currentPromptSetIndex, setCurrentPromptSetIndex] = useState(0);
     const currentPrompts = promptSets[currentPromptSetIndex % promptSets.length];
