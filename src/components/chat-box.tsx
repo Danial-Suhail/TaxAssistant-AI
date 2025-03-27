@@ -1,14 +1,39 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, DragEvent } from 'react';
 import { ArrowUpIcon, BarChart3Icon, FileTextIcon, LineChartIcon, CalculatorIcon, Send, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
-import { chat } from "@/actions/chat";
-import { readStreamableValue } from "ai/rsc";
 import { cn } from "@/lib/utils";
 import MarkdownRenderer from "./markdown-renderer";
 import FileUpload from './chat/file-upload';
+import { useChat } from 'ai/react';
+import { toast } from 'sonner'
+
+const getTextFromDataUrl = (dataUrl: string) => {
+  const base64 = dataUrl.split(",")[1];
+  return window.atob(base64);
+};
+
+function TextFilePreview({ file }: { file: File }) {
+  const [content, setContent] = useState<string>("");
+
+  useEffect(() => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result;
+      setContent(typeof text === "string" ? text.slice(0, 100) : "");
+    };
+    reader.readAsText(file);
+  }, [file]);
+
+  return (
+    <div>
+      {content}
+      {content.length >= 100 && "..."}
+    </div>
+  );
+}
 
 const prompts = [
     {
@@ -32,17 +57,76 @@ const prompts = [
 export type Message = {
     role: "user" | "assistant";
     content: string;
+    experimental_attachments?: { name: string; url: string; contentType: string }[];
 }
 
 const Chatbot = () => {
+    const { messages, input, handleInputChange, handleSubmit: handleMessageSubmit, isLoading } = useChat({
+        api: '/api/chat',
+        onError: () => {
+            toast.error("Failed to send message");
+        }
+    });
 
     const messageEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLDivElement>(null);
-
-    const [input, setInput] = useState<string>("");
-    const [conversation, setConversation] = useState<Message[]>([]);
-    const [isLoading, setIsLoading] = useState<boolean>(false);
     const [hasStartedChat, setHasStartedChat] = useState<boolean>(false);
+    const [files, setFiles] = useState<FileList | null>(null);
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const [clearPreview, setClearPreview] = useState(false);
+
+    const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      setIsDragging(true);
+    };
+    
+    const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      setIsDragging(false);
+    };
+    
+    const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const droppedFiles = event.dataTransfer.files;
+      const droppedFilesArray = Array.from(droppedFiles);
+      if (droppedFilesArray.length > 0) {
+        const validFiles = droppedFilesArray.filter(
+          (file) => file.type.startsWith("image/") || file.type.startsWith("text/")
+        );
+    
+        if (validFiles.length === droppedFilesArray.length) {
+          const dataTransfer = new DataTransfer();
+          validFiles.forEach((file) => dataTransfer.items.add(file));
+          setFiles(dataTransfer.files);
+        } else {
+          toast.error("Only image and text files are allowed!");
+        }
+      }
+      setIsDragging(false);
+    };
+    
+    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+      const selectedFiles = event.target.files;
+      if (selectedFiles) {
+        const validFiles = Array.from(selectedFiles).filter(
+          (file) => file.type.startsWith("image/") || file.type.startsWith("text/")
+        );
+    
+        if (validFiles.length === selectedFiles.length) {
+          const dataTransfer = new DataTransfer();
+          validFiles.forEach((file) => dataTransfer.items.add(file));
+          setFiles(dataTransfer.files);
+        } else {
+          toast.error("Only image and text files are allowed");
+        }
+      }
+    };
+
+    const handleUploadClick = () => {
+        fileInputRef.current?.click();
+    };
 
     const scrollToBottom = () => {
         messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -53,61 +137,26 @@ const Chatbot = () => {
     }, [input]);
 
     const handlePromptClick = (text: string) => {
-        setInput(text);
         if (inputRef.current) {
             inputRef.current.textContent = text;
         }
+        handleInputChange({ target: { value: text } } as any);
     };
 
-    const handleSend = async () => {
-        if (!input.trim() || isLoading) return;
+    const handleFileSelect = (file: File) => {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      setFiles(dataTransfer.files);
+    };
 
-        const userMesage: Message = {
-            role: "user",
-            content: input.trim(),
-        };
-
-        setInput("");
-        setIsLoading(true);
-        setConversation(prev => [...prev, userMesage]);
-        setHasStartedChat(true);
-
-        try {
-            const { newMessage } = await chat([
-                ...conversation,
-                userMesage,
-            ]);
-
-            let textContent = "";
-
-            const assistantMessage: Message = {
-                role: "assistant",
-                content: "",
-            };
-
-            setConversation(prev => [...prev, assistantMessage]);
-
-            for await (const delta of readStreamableValue(newMessage)) {
-                textContent += delta;
-                setConversation(prev => {
-                    const newConv = [...prev];
-                    newConv[newConv.length - 1] = {
-                        role: "assistant",
-                        content: textContent,
-                    };
-                    return newConv;
-                });
-            }
-
-        } catch (error) {
-            console.error("Error: ", error);
-            setConversation(prev => [...prev, {
-                role: "assistant",
-                content: "Sorry, there was an error. Please try again",
-            }]);
-        } finally {
-            setIsLoading(false);
-        }
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      const options = files ? { experimental_attachments: files } : {};
+      await handleMessageSubmit(e, options);
+      setFiles(null);
+      setClearPreview(true); // Set to true after submission
+      // Reset after a short delay
+      setTimeout(() => setClearPreview(false), 100);
     };
 
     return (
@@ -180,7 +229,7 @@ const Chatbot = () => {
                         transition={{ duration: 0.2 }}
                         className="pt-8 space-y-4"
                     >
-                        {conversation.map((message, index) => (
+                        {messages.map((message, index) => (
                             <motion.div
                                 key={index}
                                 initial={{ opacity: 0, y: 20 }}
@@ -202,9 +251,19 @@ const Chatbot = () => {
                                     {message.role === "assistant" ? (
                                         <MarkdownRenderer content={message.content} />
                                     ) : (
-                                        <p className="whitespace-pre-wrap">
-                                            {message.content}
-                                        </p>
+                                        <div>
+                                            <p className="whitespace-pre-wrap">{message.content}</p>
+                                            {message.experimental_attachments?.map((attachment) =>
+                                                attachment.contentType?.startsWith("image") ? (
+                                                    <img
+                                                        key={attachment.name}
+                                                        src={attachment.url}
+                                                        alt={attachment.name}
+                                                        className="mt-2 rounded-md max-w-[200px]"
+                                                    />
+                                                ) : null
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                             </motion.div>
@@ -226,18 +285,88 @@ const Chatbot = () => {
                         whileFocus={{ scale: 1.01 }}
                         transition={{ duration: 0.2 }}
                         className="relative border rounded-2xl lg:rounded-e-3xl p-2.5 flex items-end gap-2 bg-background"
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
                     >
-                        <FileUpload /> {/* Moved to the start */}
+                        <AnimatePresence>
+                            {files && files.length > 0 && (
+                                <div className="flex flex-row gap-2 absolute -top-16 left-0 px-4 w-full">
+                                    {Array.from(files).map((file) =>
+                                        file.type.startsWith("image") ? (
+                                            <div key={file.name}>
+                                                <motion.img
+                                                    src={URL.createObjectURL(file)}
+                                                    alt={file.name}
+                                                    className="rounded-md w-16 h-16 object-cover"
+                                                    initial={{ scale: 0.8, opacity: 0 }}
+                                                    animate={{ scale: 1, opacity: 1 }}
+                                                    exit={{
+                                                        y: -10,
+                                                        scale: 1.1,
+                                                        opacity: 0,
+                                                        transition: { duration: 0.2 },
+                                                    }}
+                                                />
+                                            </div>
+                                        ) : null
+                                    )}
+                                </div>
+                            )}
+                        </AnimatePresence>
+                        <FileUpload onFileSelect={handleFileSelect} clearPreview={clearPreview} /> {/* Moved to the start */}
+                        <AnimatePresence>
+                            {files && files.length > 0 && (
+                                <div className="flex flex-row gap-2 absolute bottom-12 px-4 w-full md:w-[500px] md:px-0">
+                                    {Array.from(files).map((file) =>
+                                        file.type.startsWith("image") ? (
+                                            <div key={file.name}>
+                                                <motion.img
+                                                    src={URL.createObjectURL(file)}
+                                                    alt={file.name}
+                                                    className="rounded-md w-16"
+                                                    initial={{ scale: 0.8, opacity: 0 }}
+                                                    animate={{ scale: 1, opacity: 1 }}
+                                                    exit={{
+                                                        y: -10,
+                                                        scale: 1.1,
+                                                        opacity: 0,
+                                                        transition: { duration: 0.2 },
+                                                    }}
+                                                />
+                                            </div>
+                                        ) : file.type.startsWith("text") ? (
+                                            <motion.div
+                                                key={file.name}
+                                                className="text-[8px] leading-1 w-28 h-16 overflow-hidden text-zinc-500 border p-2 rounded-lg bg-white dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400"
+                                                initial={{ scale: 0.8, opacity: 0 }}
+                                                animate={{ scale: 1, opacity: 1 }}
+                                                exit={{
+                                                    y: -10,
+                                                    scale: 1.1,
+                                                    opacity: 0,
+                                                    transition: { duration: 0.2 },
+                                                }}
+                                            >
+                                                <TextFilePreview file={file} />
+                                            </motion.div>
+                                        ) : null
+                                    )}
+                                </div>
+                            )}
+                        </AnimatePresence>
                         <div
                             contentEditable
                             role="textbox"
                             onInput={(e) => {
-                                setInput(e.currentTarget.textContent || "");
+                                const value = (e.target as HTMLDivElement).textContent || '';
+                                handleInputChange({ target: { value } } as any);
                             }}
                             onKeyDown={(e) => {
                                 if (e.key === "Enter" && !e.shiftKey) {
                                     e.preventDefault();
-                                    handleSend();
+                                    handleSubmit(e);
+                                    setHasStartedChat(true);
                                 }
                             }}
                             data-placeholder="Ask about your taxes..."
@@ -255,7 +384,10 @@ const Chatbot = () => {
                             className="bg-teal-600 hover:bg-teal-700"
                             onClick={(e) => {
                                 e.preventDefault();
-                                handleSend();
+                                const options = files ? { experimental_attachments: files } : {};
+                                handleSubmit(e, options);
+                                setFiles(null); // Clear files after submission
+                                setHasStartedChat(true);
                             }}
                         >
                             {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
