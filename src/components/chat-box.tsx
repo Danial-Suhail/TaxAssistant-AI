@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState, DragEvent } from 'react';
-import { ArrowUpIcon, BarChart3Icon, FileTextIcon, LineChartIcon, CalculatorIcon, Send, Loader2, Plus } from "lucide-react";
+import { BarChart3Icon, FileTextIcon, LineChartIcon, CalculatorIcon, Send, Loader2, Plus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
@@ -11,9 +11,12 @@ import { useChat } from 'ai/react';
 import { toast } from 'sonner'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-const getTextFromDataUrl = (dataUrl: string) => {
-  const base64 = dataUrl.split(",")[1];
-  return window.atob(base64);
+import { ChangeEvent } from 'react';
+type InputChangeEvent = ChangeEvent<HTMLInputElement | HTMLTextAreaElement>;
+
+type HandleSubmitOptions = {
+  data?: string;
+  experimental_attachments?: FileList;
 };
 
 function TextFilePreview({ file }: { file: File }) {
@@ -173,20 +176,15 @@ const Chatbot = () => {
     const inputRef = useRef<HTMLDivElement>(null);
     const [hasStartedChat, setHasStartedChat] = useState<boolean>(false);
     const [files, setFiles] = useState<FileList | null>(null);
-
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const [isDragging, setIsDragging] = useState(false);
     const [clearPreview, setClearPreview] = useState(false);
-
     const [currentPromptSetIndex, setCurrentPromptSetIndex] = useState(0);
     const currentPrompts = promptSets[currentPromptSetIndex % promptSets.length];
-
-    // Add these new states after your existing ones
     const [chatHistory, setChatHistory] = useState<ChatHistory[]>([]);
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
     // Add this to your existing state declarations in the Chatbot component
-    const [chatKey, setChatKey] = useState(0);
+    const [, setChatKey] = useState(0);
 
     // Add this function to handle saving chats
     const saveCurrentChat = () => {
@@ -216,12 +214,10 @@ const Chatbot = () => {
 
     const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
       event.preventDefault();
-      setIsDragging(true);
     };
     
     const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
       event.preventDefault();
-      setIsDragging(false);
     };
     
     const handleDrop = (event: DragEvent<HTMLDivElement>) => {
@@ -241,25 +237,8 @@ const Chatbot = () => {
           toast.error("Only image and text files are allowed!");
         }
       }
-      setIsDragging(false);
     };
     
-    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-      const selectedFiles = event.target.files;
-      if (selectedFiles) {
-        const validFiles = Array.from(selectedFiles).filter(
-          (file) => file.type.startsWith("image/") || file.type.startsWith("text/")
-        );
-    
-        if (validFiles.length === selectedFiles.length) {
-          const dataTransfer = new DataTransfer();
-          validFiles.forEach((file) => dataTransfer.items.add(file));
-          setFiles(dataTransfer.files);
-        } else {
-          toast.error("Only image and text files are allowed");
-        }
-      }
-    };
 
     const handleUploadClick = () => {
         fileInputRef.current?.click();
@@ -277,7 +256,7 @@ const Chatbot = () => {
         if (inputRef.current) {
             inputRef.current.textContent = text;
         }
-        handleInputChange({ target: { value: text } } as any);
+        handleInputChange({ target: { value: text } } as React.ChangeEvent<HTMLTextAreaElement>);
     };
 
     const handleFileSelect = (file: File) => {
@@ -286,7 +265,7 @@ const Chatbot = () => {
       setFiles(dataTransfer.files);
     };
 
-    const handleSubmit = async (e: React.FormEvent, options?: any) => {
+    const handleSubmit = async (e: React.FormEvent, options?: HandleSubmitOptions) => {
       e.preventDefault();
       const fileOptions = options || (files ? { experimental_attachments: files } : {});
       await handleMessageSubmit(e, fileOptions);
@@ -306,6 +285,24 @@ const Chatbot = () => {
       setFiles(null);
       setClearPreview(true);
       setTimeout(() => setClearPreview(false), 100);
+    };
+
+    const handleHistoryClick = (chat: ChatHistory) => {
+        chat.messages.forEach((msg) => {
+            if (msg.role === "user") {
+                handleMessageSubmit(
+                    { preventDefault: () => {} } as React.FormEvent,
+                    { data: msg.content }
+                );
+            }
+        });
+        setIsHistoryOpen(false);
+        setHasStartedChat(true);
+    };
+
+    const handleContentEditableInput = (e: React.FormEvent<HTMLDivElement>) => {
+        const value = (e.currentTarget as HTMLDivElement).textContent || '';
+        handleInputChange({ target: { value } } as React.ChangeEvent<HTMLTextAreaElement>);
     };
 
     return (
@@ -350,16 +347,7 @@ const Chatbot = () => {
                                     {chatHistory.map((chat) => (
                                         <button
                                             key={chat.id}
-                                            onClick={() => {
-                                                // Simulate sending each message from history
-                                                chat.messages.forEach((msg) => {
-                                                    if (msg.role === "user") {
-                                                        handleMessageSubmit({ preventDefault: () => {} } as any, { data: msg.content });
-                                                    }
-                                                });
-                                                setIsHistoryOpen(false);
-                                                setHasStartedChat(true);
-                                            }}
+                                            onClick={() => handleHistoryClick(chat)}
                                             className="w-full px-4 py-2 text-left hover:bg-gray-100 flex flex-col"
                                         >
                                             <span className="text-sm font-medium truncate">{chat.title}</span>
@@ -618,10 +606,7 @@ const Chatbot = () => {
                         <div
                             contentEditable
                             role="textbox"
-                            onInput={(e) => {
-                                const value = (e.target as HTMLDivElement).textContent || '';
-                                handleInputChange({ target: { value } } as any);
-                            }}
+                            onInput={handleContentEditableInput}
                             onKeyDown={(e) => {
                                 if (e.key === "Enter" && !e.shiftKey) {
                                     e.preventDefault();

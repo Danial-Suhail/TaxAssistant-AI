@@ -7,6 +7,11 @@ type MarkdownRendererProps = {
     className?: string;
 };
 
+// Add proper types for the code component
+type CodeProps = {
+    inline?: boolean;
+} & React.ComponentPropsWithoutRef<'code'>;
+
 const MarkdownRenderer = ({ content, className }: MarkdownRendererProps) => {
     return (
         <div className={cn("prose prose-sm dark:prose-invert max-w-none", className)}>
@@ -48,8 +53,8 @@ const MarkdownRenderer = ({ content, className }: MarkdownRendererProps) => {
                             {children}
                         </li>
                     ),
-                    // @ts-ignore
-                    code: ({ node, inline, className, children, ...props }) => {
+                    // Replace @ts-ignore with proper typing
+                    code: ({ inline, className, children, ...props }: CodeProps) => {
                         return !inline ? (
                             <pre className="bg-muted/50 p-3 rounded-lg mb-3 last:mb-0 overflow-x-auto">
                                 <code className={cn("text-sm", className)} {...props}>
@@ -109,4 +114,4 @@ const MarkdownRenderer = ({ content, className }: MarkdownRendererProps) => {
     );
 };
 
-export default MarkdownRenderer; 
+export default MarkdownRenderer;

@@ -2,7 +2,6 @@
 
 import React from 'react'
 import { Card } from "@/components/ui/card"
-import { Send, Loader2, Calculator, LineChart, FileText, BarChart } from "lucide-react"
 import Chatbot from "@/components/chat-box"
 import { motion } from "framer-motion"
 
