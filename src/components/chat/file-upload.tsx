@@ -33,10 +33,17 @@ export default function FileUpload({ onFileSelect, clearPreview }: FileUploadPro
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setFileName(file.name);
-      setFileType(file.type);
-      onFileSelect(file);
-      setOpen(false); // Close dialog after selection
+      try {
+        setIsUploading(true);
+        setFileName(file.name);
+        setFileType(file.type);
+        await onFileSelect(file); // In case onFileSelect is async
+        setOpen(false); // Close dialog after selection
+      } catch (error) {
+        console.error('Error uploading file:', error);
+      } finally {
+        setIsUploading(false);
+      }
     }
   };
 
