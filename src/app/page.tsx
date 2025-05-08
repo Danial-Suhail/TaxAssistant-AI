@@ -4,6 +4,7 @@ import React from 'react'
 import { Card } from "@/components/ui/card"
 import Chatbot from "@/components/chat-box"
 import { motion } from "framer-motion"
+import { Footer } from "@/components/footer"
 
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -77,6 +78,7 @@ export default function HomePage() {
           </motion.div>
         </motion.div>
       </motion.main>
+      <Footer />
     </>
   )
 }

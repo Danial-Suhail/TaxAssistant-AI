@@ -51,14 +51,34 @@ export async function POST(req: Request) {
   const formattedResponse = formatTaxResponse(currentQuery);
 
   const result = streamText({
-    model: openai("gpt-4"),
+    model: openai("gpt-4o"),
     system: `You are TaxAssist AI, a helpful tax assistant specializing in US tax law and Form 1040. 
     Keep responses friendly but professional.
-    When discussing numbers or calculations, use the following format:
+    
+    IMPORTANT FORMAT REQUIREMENTS:
     1. Start with a clear markdown explanation
-    2. Include TABLE_DATA in the specified JSON format
-    3. Include CHART_DATA in the specified JSON format
+    2. For tables, you MUST use this exact format:
+       |||TABLE_DATA|||
+       {
+         "tableData": [
+           {"label": "Category Name", "amount": number},
+           {"label": "Another Category", "amount": number}
+         ]
+       }
+       |||END_TABLE|||
+       
+    3. For charts, you MUST use this exact format:
+       |||CHART_DATA|||
+       {
+         "chartData": [
+           {"name": "Category Name", "value": number},
+           {"name": "Another Category", "value": number}
+         ]
+       }
+       |||END_CHART|||
+       
     4. Follow with detailed breakdown
+    
     ${formattedResponse ? `\n\nHere's a template to follow: ${formattedResponse}` : ''}`,
     messages,
   });
