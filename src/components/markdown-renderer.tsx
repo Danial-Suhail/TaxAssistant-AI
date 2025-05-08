@@ -12,7 +12,19 @@ type CodeProps = {
     inline?: boolean;
 } & React.ComponentPropsWithoutRef<'code'>;
 
+const stripJsonData = (content: string) => {
+    // Remove TABLE_DATA section
+    content = content.replace(/\|\|\|TABLE_DATA\|\|\|[\s\S]*?\|\|\|END_TABLE\|\|\|/g, '');
+    // Remove CHART_DATA section
+    content = content.replace(/\|\|\|CHART_DATA\|\|\|[\s\S]*?\|\|\|END_CHART\|\|\|/g, '');
+    // Remove any empty lines that might be left
+    content = content.replace(/^\s*[\r\n]/gm, '');
+    return content;
+};
+
 const MarkdownRenderer = ({ content, className }: MarkdownRendererProps) => {
+    const cleanedContent = stripJsonData(content);
+    
     return (
         <div className={cn("prose prose-sm dark:prose-invert max-w-none", className)}>
             <ReactMarkdown
@@ -108,7 +120,7 @@ const MarkdownRenderer = ({ content, className }: MarkdownRendererProps) => {
                     ),
                 }}
             >
-                {content}
+                {cleanedContent}
             </ReactMarkdown>
         </div>
     );

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState, DragEvent } from 'react';
-import { BarChart3Icon, FileTextIcon, LineChartIcon, CalculatorIcon, Send, Loader2, Plus } from "lucide-react";
+import { BarChart3Icon, FileTextIcon, LineChartIcon, CalculatorIcon, Send, Loader2, Plus, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
@@ -95,7 +95,8 @@ const promptSets = [
 ];
 
 export type Message = {
-    role: "user" | "assistant";
+    id: string;
+    role: "user" | "assistant" | "system" | "data";
     content: string;
     experimental_attachments?: { name: string; url: string; contentType: string }[];
 }
@@ -138,7 +139,7 @@ const TaxBarChart = ({ data }: { data: { name: string; value: number }[] }) => (
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="name" />
         <YAxis />
-        <Tooltip />
+        <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, 'Amount']} />
         <Bar dataKey="value" fill="#14b8a6" />
       </BarChart>
     </ResponsiveContainer>
@@ -154,15 +155,28 @@ const extractJSON = (content: string, startMarker: string, endMarker: string) =>
     if (end === -1) return null;
     
     const jsonString = content.substring(start + startMarker.length, end).trim();
-    return JSON.parse(jsonString);
+    // Remove any comments and clean the JSON string
+    const cleanJsonString = jsonString
+      .replace(/\/\/.*$/gm, '') // Remove single line comments
+      .replace(/\/\*[\s\S]*?\*\//g, '') // Remove multi-line comments
+      .replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas
+      .trim();
+    
+    try {
+      return JSON.parse(cleanJsonString);
+    } catch (parseError) {
+      console.error('Error parsing JSON:', parseError);
+      console.log('Problematic JSON string:', cleanJsonString);
+      return null;
+    }
   } catch (error) {
-    console.error('Error parsing JSON:', error);
+    console.error('Error extracting JSON:', error);
     return null;
   }
 };
 
 const Chatbot = () => {
-    const { messages, input, handleInputChange, handleSubmit: handleMessageSubmit, isLoading } = useChat({
+    const { messages, input, handleInputChange, handleSubmit: handleMessageSubmit, isLoading, reload, setMessages } = useChat({
         api: '/api/chat',
         onError: () => {
             toast.error("Failed to send message");
@@ -178,35 +192,10 @@ const Chatbot = () => {
     const currentPrompts = promptSets[currentPromptSetIndex % promptSets.length];
     const [chatHistory, setChatHistory] = useState<ChatHistory[]>([]);
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-
-    // Add this to your existing state declarations in the Chatbot component
-    const [, setChatKey] = useState(0);
-
-    // Add this function to handle saving chats
-    const saveCurrentChat = () => {
-        if (messages.length > 0) {
-            const newChat: ChatHistory = {
-                id: Date.now().toString(),
-                title: messages[0].content.slice(0, 30) + "...",
-                messages: messages.filter(m => m.role === "user" || m.role === "assistant") as Message[],
-                timestamp: new Date().toLocaleString()
-            };
-
-            setChatHistory(prev => {
-                const newHistory = [newChat, ...prev].slice(0, 5);
-                localStorage.setItem('chatHistory', JSON.stringify(newHistory));
-                return newHistory;
-            });
-        }
-    };
-
-    // Add this useEffect to load chat history on mount
-    useEffect(() => {
-        const savedHistory = localStorage.getItem('chatHistory');
-        if (savedHistory) {
-            setChatHistory(JSON.parse(savedHistory));
-        }
-    }, []);
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const [previewPdf, setPreviewPdf] = useState<string | null>(null);
+    const [chatKey, setChatKey] = useState(0);
+    const historyDropdownRef = useRef<HTMLDivElement>(null);
 
     const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -262,7 +251,6 @@ const Chatbot = () => {
       e.preventDefault();
       const fileOptions = options || (files ? { experimental_attachments: files } : {});
       await handleMessageSubmit(e, fileOptions);
-      saveCurrentChat();
       setFiles(null);
       setClearPreview(true); // Set to true after submission
       // Reset after a short delay
@@ -271,26 +259,51 @@ const Chatbot = () => {
       setCurrentPromptSetIndex((prev) => (prev + 1) % promptSets.length);
     };
 
-    // Add this function after your other handler functions
     const handleNewChat = () => {
-      setChatKey(prev => prev + 1);
-      setHasStartedChat(false);
-      setFiles(null);
-      setClearPreview(true);
-      setTimeout(() => setClearPreview(false), 100);
+        // Save current chat to history if there are messages and it's unique
+        if (messages.length > 0) {
+            const newChatMessages = messages.map(msg => ({
+                id: msg.id || Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                role: msg.role,
+                content: msg.content
+            }));
+            const isDuplicate = chatHistory.some(chat =>
+                chat.messages.length === newChatMessages.length &&
+                chat.messages.every((msg, idx) =>
+                    msg.role === newChatMessages[idx].role &&
+                    msg.content === newChatMessages[idx].content
+                )
+            );
+            if (!isDuplicate) {
+                const newChat: ChatHistory = {
+                    id: Date.now().toString(),
+                    title: messages[0].content.slice(0, 30) + "...",
+                    messages: newChatMessages,
+                    timestamp: new Date().toLocaleString()
+                };
+                setChatHistory(prev => [newChat, ...prev].slice(0, 5));
+            }
+        }
+
+        // Reset chat state
+        setChatKey(prev => prev + 1);
+        setHasStartedChat(false);
+        setFiles(null);
+        setClearPreview(true);
+        setMessages([]);
+        reload();
+        setTimeout(() => setClearPreview(false), 100);
     };
 
     const handleHistoryClick = (chat: ChatHistory) => {
-        chat.messages.forEach((msg) => {
-            if (msg.role === "user") {
-                handleMessageSubmit(
-                    { preventDefault: () => {} } as React.FormEvent,
-                    { data: msg.content }
-                );
-            }
-        });
-        setIsHistoryOpen(false);
+        const formattedMessages = chat.messages.map(msg => ({
+            id: msg.id,
+            role: msg.role,
+            content: msg.content
+        }));
+        setMessages(formattedMessages);
         setHasStartedChat(true);
+        setIsHistoryOpen(false);
     };
 
     const handleContentEditableInput = (e: React.FormEvent<HTMLDivElement>) => {
@@ -298,29 +311,46 @@ const Chatbot = () => {
         handleInputChange({ target: { value } } as React.ChangeEvent<HTMLTextAreaElement>);
     };
 
+    // Close history dropdown when clicking outside
+    useEffect(() => {
+        if (!isHistoryOpen) return;
+        function handleClickOutside(event: MouseEvent) {
+            if (
+                historyDropdownRef.current &&
+                !historyDropdownRef.current.contains(event.target as Node)
+            ) {
+                setIsHistoryOpen(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isHistoryOpen]);
+
     return (
         <div className="relative h-full flex flex-col items-center mb-5">
-            {/* New Chat Button */}
-            <div className="absolute top-4 left-4 z-10">
+            {/* Main chat UI (everything except modals) */}
+            {/* New Chat Button - Update positioning */}
+            <div className="fixed top-4 left-4 z-50">
                 <Button
                     variant="ghost"
                     size="sm"
                     onClick={handleNewChat}
-                    className="flex items-center gap-2 text-teal-600 hover:text-teal-700"
+                    className="flex items-center gap-2 text-teal-600 hover:text-teal-700 bg-white/80 backdrop-blur-sm"
                 >
                     <Plus className="h-4 w-4" />
                     <span className="hidden sm:inline">New Chat</span>
                 </Button>
             </div>
-
-            {/* Add this new dropdown */}
-            <div className="absolute top-4 right-4 z-10">
+            {/* History Button - Update positioning */}
+            <div className="fixed top-4 right-4 z-50">
                 <div className="relative">
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-                        className="flex items-center gap-2"
+                        className="flex items-center gap-2 bg-white/80 backdrop-blur-sm"
                     >
                         History
                         <svg
@@ -332,9 +362,11 @@ const Chatbot = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
                     </Button>
-
                     {isHistoryOpen && (
-                        <div className="absolute right-0 mt-2 w-72 bg-white rounded-md shadow-lg border">
+                        <div
+                            ref={historyDropdownRef}
+                            className="absolute right-0 mt-2 w-72 bg-white rounded-md shadow-lg border"
+                        >
                             {chatHistory.length > 0 ? (
                                 <div className="py-1">
                                     {chatHistory.map((chat) => (
@@ -355,7 +387,6 @@ const Chatbot = () => {
                     )}
                 </div>
             </div>
-
             {/* Message Container */}
             <div className="flex-1 w-full max-w-3xl px-4">
                 {!hasStartedChat ? (
@@ -405,7 +436,7 @@ const Chatbot = () => {
                                         whileTap={{ scale: 0.95 }}
                                         transition={{ duration: 0.4, delay: index * 0.05, type: "spring", bounce: 0.25 }}
                                         onClick={() => handlePromptClick(prompt.text)}
-                                        className="flex items-center gap-3 p-4 text-left border rounded-xl hover:bg-muted transition-all text-sm"
+                                        className="flex items-center gap-3 p-4 text-left border rounded-xl hover:bg-muted transition-all text-sm select-none"
                                     >
                                         {prompt.icon}
                                         <span>
@@ -422,7 +453,7 @@ const Chatbot = () => {
                             paddingBottom: input ? (input.split("\n").length > 3 ? "206px" : "110px") : "80px"
                         }}
                         transition={{ duration: 0.2 }}
-                        className="pt-8 space-y-4"
+                        className="pt-20 pb-32 space-y-4 overflow-auto"
                     >
                         {messages.map((message, index) => (
                             <motion.div
@@ -448,23 +479,23 @@ const Chatbot = () => {
                                             <MarkdownRenderer content={message.content} />
                                             {/* Table rendering */}
                                             {message.content.includes('|||TABLE_DATA|||') && (
-                                              <TaxTable
-                                                data={extractJSON(
-                                                  message.content,
-                                                  '|||TABLE_DATA|||',
-                                                  '|||END_TABLE|||'
-                                                )?.tableData || []}
-                                              />
+                                                <TaxTable
+                                                    data={extractJSON(
+                                                        message.content,
+                                                        '|||TABLE_DATA|||',
+                                                        '|||END_TABLE|||'
+                                                    )?.tableData || []}
+                                                />
                                             )}
                                             {/* Chart rendering */}
                                             {message.content.includes('|||CHART_DATA|||') && (
-                                              <TaxBarChart
-                                                data={extractJSON(
-                                                  message.content,
-                                                  '|||CHART_DATA|||',
-                                                  '|||END_CHART|||'
-                                                )?.chartData || []}
-                                              />
+                                                <TaxBarChart
+                                                    data={extractJSON(
+                                                        message.content,
+                                                        '|||CHART_DATA|||',
+                                                        '|||END_CHART|||'
+                                                    )?.chartData || []}
+                                                />
                                             )}
                                         </div>
                                     ) : (
@@ -476,8 +507,26 @@ const Chatbot = () => {
                                                         key={attachment.name}
                                                         src={attachment.url}
                                                         alt={attachment.name}
-                                                        className="mt-2 rounded-md max-w-[200px]"
+                                                        className="mt-2 rounded-md max-w-[200px] cursor-pointer"
+                                                        onClick={() => setPreviewImage(attachment.url)}
                                                     />
+                                                ) : attachment.contentType === "application/pdf" ? (
+                                                    <div
+                                                        key={attachment.name}
+                                                        className="mt-2 flex flex-col items-center cursor-pointer"
+                                                        onClick={() => setPreviewPdf(attachment.url)}
+                                                    >
+                                                        <svg
+                                                            xmlns="http://www.w3.org/2000/svg"
+                                                            viewBox="0 0 48 48"
+                                                            className="w-12 h-12 mb-1"
+                                                        >
+                                                            <rect width="48" height="48" rx="8" fill="#F87171" />
+                                                            <text x="50%" y="60%" textAnchor="middle" fill="#fff" fontSize="18" fontWeight="bold" fontFamily="Arial" dy=".3em">PDF</text>
+                                                        </svg>
+                                                        <span className="text-xs text-teal-700 max-w-[180px] truncate text-center">{attachment.name}</span>
+                                                        <span className="text-[10px] text-gray-400">Click to view</span>
+                                                    </div>
                                                 ) : null
                                             )}
                                         </div>
@@ -486,6 +535,7 @@ const Chatbot = () => {
                             </motion.div>
                         ))}
                         <div ref={messageEndRef} />
+                        <div className="h-32" />
                     </motion.div>
                 )}
             </div>
@@ -500,23 +550,20 @@ const Chatbot = () => {
                     {/* Add the prompts here, above the input */}
                     {hasStartedChat && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-4 mb-4">
-                            <AnimatePresence mode="wait">
-                                {currentPrompts.map((prompt, index) => (
-                                    <motion.button
-                                        key={`${currentPromptSetIndex}-${index}`}
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, y: -10 }}
-                                        whileTap={{ scale: 0.95 }}
-                                        transition={{ duration: 0.2, delay: index * 0.05 }}
-                                        onClick={() => handlePromptClick(prompt.text)}
-                                        className="flex items-center gap-3 p-3 text-left border rounded-xl hover:bg-muted transition-all text-sm"
-                                    >
-                                        {prompt.icon}
-                                        <span>{prompt.text}</span>
-                                    </motion.button>
-                                ))}
-                            </AnimatePresence>
+                            {currentPrompts.map((prompt, index) => (
+                                <motion.button
+                                    key={`${currentPromptSetIndex}-${index}`}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    transition={{ duration: 0.2, delay: index * 0.05 }}
+                                    onClick={() => handlePromptClick(prompt.text)}
+                                    className="flex items-center gap-3 p-3 text-left border rounded-xl hover:bg-muted transition-all text-sm select-none"
+                                >
+                                    {prompt.icon}
+                                    <span>{prompt.text}</span>
+                                </motion.button>
+                            ))}
                         </div>
                     )}
 
@@ -539,7 +586,7 @@ const Chatbot = () => {
                                                 <motion.img
                                                     src={URL.createObjectURL(file)}
                                                     alt={file.name}
-                                                    className="rounded-md w-16 h-16 object-cover"
+                                                    className="rounded-md w-16 h-16 object-cover cursor-pointer"
                                                     initial={{ scale: 0.8, opacity: 0 }}
                                                     animate={{ scale: 1, opacity: 1 }}
                                                     exit={{
@@ -548,6 +595,7 @@ const Chatbot = () => {
                                                         opacity: 0,
                                                         transition: { duration: 0.2 },
                                                     }}
+                                                    onClick={() => setPreviewImage(URL.createObjectURL(file))}
                                                 />
                                             </div>
                                         ) : null
@@ -633,6 +681,46 @@ const Chatbot = () => {
                     </motion.div>
                 </div>
             </motion.div>
+            {/* Modal overlays for image and PDF previews (always render last for highest z-index) */}
+            {previewImage && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                    <div className="absolute inset-0" onClick={() => setPreviewImage(null)} />
+                    <div className="relative z-10 w-full h-full flex flex-col items-center justify-center">
+                        <button
+                            className="absolute top-6 right-8 bg-white/80 rounded-full p-2 shadow hover:bg-white z-20"
+                            onClick={() => setPreviewImage(null)}
+                            aria-label="Close preview"
+                        >
+                            <X className="w-7 h-7 text-gray-700" />
+                        </button>
+                        <img
+                            src={previewImage}
+                            alt="Preview"
+                            className="rounded-lg max-h-[90vh] max-w-[90vw] mx-auto shadow-lg border bg-white"
+                        />
+                    </div>
+                </div>
+            )}
+            {previewPdf && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                    <div className="absolute inset-0" onClick={() => setPreviewPdf(null)} />
+                    <div className="relative z-10 w-full h-full flex flex-col items-center justify-center">
+                        <button
+                            className="absolute top-6 right-8 bg-white/80 rounded-full p-2 shadow hover:bg-white z-20"
+                            onClick={() => setPreviewPdf(null)}
+                            aria-label="Close PDF preview"
+                        >
+                            <X className="w-7 h-7 text-gray-700" />
+                        </button>
+                        <iframe
+                            src={previewPdf}
+                            title="PDF Preview"
+                            className="rounded-lg w-full max-w-5xl h-[90vh] mx-auto shadow-lg border bg-white"
+                            style={{ minHeight: '60vh' }}
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     )
 };
