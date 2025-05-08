@@ -194,7 +194,6 @@ const Chatbot = () => {
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [previewPdf, setPreviewPdf] = useState<string | null>(null);
-    const [chatKey, setChatKey] = useState(0);
     const historyDropdownRef = useRef<HTMLDivElement>(null);
 
     const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
@@ -286,7 +285,6 @@ const Chatbot = () => {
         }
 
         // Reset chat state
-        setChatKey(prev => prev + 1);
         setHasStartedChat(false);
         setFiles(null);
         setClearPreview(true);
